@@ -59,29 +59,6 @@ json_escape() {
   '
 }
 
-# == JSON Extract Function =============================================
-json_extract() {
-  _key="$1"
-  awk -v key="$_key" '
-  BEGIN { 
-    RS = "[{},\\[\\]\\\":,]"; 
-    in_key = 0;
-  }
-  $0 ~ key {
-    in_key = 1;
-    next;
-  }
-  in_key == 1 {
-    out = $0;
-    gsub(/^[[:space:]]+|[[:space:]]+$/, "", out);
-    if (out != "") {
-      print out;
-      exit;
-    }
-    in_key = 0;
-  }'
-}
-
 #######################################################################
 # Prepare for the Main Routine
 #######################################################################

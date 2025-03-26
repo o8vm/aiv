@@ -1,0 +1,241 @@
+#!/bin/sh
+#
+#######################################################################
+# Initial Configuration
+#######################################################################
+# 
+# === Initialize Shell Environment ====================================
+set -u
+umask 0022
+export LC_ALL='C'
+export PATH="$(command -p getconf PATH)${PATH:+:}:${PATH:-}"
+
+# === Basic Configuration =============================================
+CONFIG_DIR="$HOME/.config/aiv"
+CONFIG_FILE="$CONFIG_DIR/config" 
+CONVERSATION="$CONFIG_DIR/conversation"
+
+# === Usage Printing Function =========================================
+print_usage_and_exit () {
+  cat <<-USAGE 1>&2
+				${0##*/} - AI Valve: Pipes for AI
+				Usage   : ${0##*/} [options] [prompt]
+				Options : -c [file_pattern|-] Add context from files (glob pattern) or stdin (-)
+				                              In case there is no prompt in stdin(-), it will
+				                              only be added to the context.
+				          -r                  Repeat the input before output
+				          -e                  Continue previous conversation thread
+				          -m MODEL            Use specified model
+				                              (default: claude-3.7-sonnet-latest)
+				          -h                  Display this help message
+				          -v                  Display version information
+				          -s [prompt]         Overwite system prompt
+				Version : Sun Mar  2 14:23:42 JST 2025
+				USAGE
+  exit 1
+}
+
+# === Define Error Exit Function =======================================
+error_exit () {
+  ${2+:} false && echo "${0##*/}: $2" 1>&2
+  exit $1
+}
+
+# === JSON Escape Function =============================================
+json_escape() {
+  tab="	"
+  cr=$(printf '\r')
+  sed '
+    s/\\/\\\\/g;
+    s/"/\\"/g;
+    s/'"$tab"'/\\t/g
+  ' | sed 's/'"$cr"'/\\r/g' | awk '
+    BEGIN { ORS=""; first=1 } 
+    { 
+      if (first) { first=0 } 
+      else { print "\\n" }
+      print $0 
+    }
+  '
+}
+
+# == JSON Extract Function =============================================
+json_extract() {
+  _key="$1"
+  awk -v key="$_key" '
+  BEGIN { 
+    RS = "[{},\\[\\]\\\":,]"; 
+    in_key = 0;
+  }
+  $0 ~ key {
+    in_key = 1;
+    next;
+  }
+  in_key == 1 {
+    out = $0;
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", out);
+    if (out != "") {
+      print out;
+      exit;
+    }
+    in_key = 0;
+  }'
+}
+
+#######################################################################
+# Prepare for the Main Routine
+#######################################################################
+
+# === Ensure Config ===================================================
+[ -d "$CONFIG_DIR" ] || mkdir -p "$CONFIG_DIR"
+[ -f "$CONFIG_FILE" ] || error_exit 1 "config file not found"
+
+# === Load Config File ================================================
+API_KEY=
+MODEL=
+MAX_TOKENS=
+SYS_PROMPT=
+
+while IFS='=' read -r key value; do
+  value=$(printf "%s\n" "$value"                                      |
+    sed -e 's/^"//' -e 's/" *$//'                                     |
+    tr -d '\n'                                                        )
+  case "$(echo "$key" | tr '[:upper:]' '[:lower:]')" in
+    api_key) API_KEY="$value"                     ;;
+    model) MODEL="$value"                         ;;
+    max_tokens) MAX_TOKENS="$value"               ;;
+    system_prompt|sys_prompt) SYS_PROMPT="$value" ;;
+  esac
+done << END
+$(cat "$CONFIG_FILE"                                                  |
+sed 's/#.*$//'                                                        |
+sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'                     |
+grep -v '^$'                                                          |
+grep -Ei '^(API_KEY|MODEL|MAX_TOKENS|SYS_PROMPT)='                    ) 
+END
+
+# === Parse Arguments =================================================
+
+CONTXT_FILE=
+EXTEND_PREV=
+REPEAT_INPT=false
+PROMPT_ARG=
+while getopts :c:earm:s:h opt
+do
+  case $opt in
+    c)      CONTXT_FILE="$CONTXT_FILE $OPTARG"      ;;
+    e)      EXTEND_PREV=true                        ;;
+    r)      REPEAT_INPT=true                        ;;
+    m)      MODEL="$OPTARG"                         ;;
+    s)      SYS_PROMPT="$OPTARG"                 ;;
+    h | v ) print_usage_and_exit                    ;;
+    '?')    error_exit 1 "Invalid Option: -$OPTARG" ;;
+  esac
+done
+shift $((OPTIND - 1))
+PROMPT_ARG="$*"
+
+# === Ensure Conversation File ========================================
+touch $CONVERSATION
+
+if [ ! -f "$CONVERSATION" ] || [ "$EXTEND_PREV" != "true" ]; then
+  if [ -n "$SYS_PROMPT" ]; then
+    printf "%s" "$SYS_PROMPT"                                       |
+    json_escape                                                     |
+    sed 's/^\(.*\)$/"system":"\1","messages":[/'                    \
+    > "$CONVERSATION"
+  else
+    printf "%s\n" '"messages":['                                    \
+    > "$CONVERSATION"
+  fi 
+fi
+
+
+#######################################################################
+# Main Routine
+#######################################################################
+ 
+# === Prepare Input ===================================================
+if [ -t 0 ]; then
+  CONTENT=""
+else
+  CONTENT="$(cat -)"
+fi
+
+# === Repeat Input ====================================================
+[ "$REPEAT_INPT" = "true" ] && [ -n "$CONTENT" ] &&
+  printf "%s" "$CONTENT"
+
+# === Build Contents ==================================================
+printf "%s" "$(echo $CONTXT_FILE)"                                    |
+tr ' ' '\n'                                                           |
+grep -Ev '^-$'                                                        |
+xargs -n 1 sh -c 'echo "===> Context File: $0"; cat "$0"; echo "<==="'|
+{                                                                    
+  cat -;                                                              
+  printf "%s" "$CONTXT_FILE"                                          |
+    grep -Eq '(^-| - |-$)' && {
+    printf "===> Context Text:\n%s\n<===\n" "$CONTENT";
+    CONTENT=""
+  }
+  printf "%s" "$PROMPT_ARG"                                          
+  printf "%s" "$CONTENT"                                             
+}                                                                     |
+json_escape                                                           |
+sed 's/^\(.*\)$/{"role":"user","content":"\1"}/'                      |
+{                                                                     #
+  if [ -s "$CONVERSATION" ] &&                                        #
+    tail -c 2 "$CONVERSATION" | grep -q '\[';                         #
+  then                                                                #
+    cat                                                               #
+  else                                                                #
+    sed 's/^/,/'                                                      #
+  fi                                                                  #
+} >> "$CONVERSATION"
+
+# === End If We Have Only Context =====================================
+if [ -z "$PROMPT_ARG" ] &&
+   printf "%s" "$CONTXT_FILE" | grep -Eq '(^-| - |-$)';
+then
+  exit 0
+fi
+
+# === API Request & Response Processing ===============================
+
+# Anthropic
+URL="https://api.anthropic.com/v1/messages"
+BODY_PARTS="{\"model\":\"$MODEL\",\"max_tokens\":$MAX_TOKENS,"
+HEADERS=$(cat <<HEADERS
+x-api-key: $API_KEY
+anthropic-version: 2023-06-01
+content-type: application/json
+HEADERS)
+
+REQ_CMD=
+if command -v curl >/dev/null 2>&1; then
+  HEADERS=$(printf "%s" "$HEADERS" | sed 's/.*/-H "&" /' | tr -d '\n')
+  REQ_CMD="curl -s $URL $HEADERS -d @-"
+else
+  error_exit 1 "curl not found"
+fi
+
+cat $CONVERSATION                             |
+sed -e '1s/^/'"$BODY_PARTS"'/' -e '$s/$/]}/'  |
+tr -d '\n'                                    |
+eval "$REQ_CMD"                               |
+sed 's/.*"content":\[{\(.*"}\)\],.*/\1/'      |
+sed 's/.*"text":\(".*[^\]}\)$/\1/'            |
+sed 's/^/,{"role": "assistant", "content": /' |
+tee -a $CONVERSATION                          |
+sed 's/.*"content": "\([^}]*[^\]\)"}$/\1/'    |
+awk '{                                        #
+  gsub(/\\\\n/, "\n")                         #
+  gsub(/\\n/, "\n")                           #
+  gsub(/\\\\t/, "\t")                         #
+  gsub(/\\t/, "\t")                           #
+  gsub(/\\"/, "\"")                           #
+  gsub(/\\\\r/, "\r")                         #
+  gsub(/\\r/, "\r")                           #
+  gsub(/^"|"$/, "")                           #
+  print                                       #
+}'                                            #

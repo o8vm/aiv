@@ -58,9 +58,9 @@ Adding context from a file:
 aiv -c mycode.js "Explain this code"
 ```
 
-Adding context from stdin:
+Adding context from stdin and files:
 ```
-cat mydata.txt | aiv -c - "Summarize this data"
+cat mydata.txt | aiv -c - -c file1.txt -c file2.txt "Summarize this data"
 ```
 
 Continue a conversation:

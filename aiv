@@ -78,10 +78,10 @@ while IFS='=' read -r key value; do
     sed -e 's/^"//' -e 's/" *$//'                                     |
     tr -d '\n'                                                        )
   case "$(echo "$key" | tr '[:upper:]' '[:lower:]')" in
-    api_key) API_KEY="$value"                     ;;
-    model) MODEL="$value"                         ;;
-    max_tokens) MAX_TOKENS="$value"               ;;
-    system_prompt|sys_prompt) SYS_PROMPT="$value" ;;
+    api_key) API_KEY="$value"                        ;;
+    model) MODEL="$value"                            ;;
+    max_tokens) MAX_TOKENS="$value"                  ;;
+    system_prompt|sys_prompt) SYS_PROMPT="$value"    ;;
   esac
 done << END
 $(cat "$CONFIG_FILE"                                                  |
@@ -95,7 +95,7 @@ END
 
 CONTXT_FILE=
 EXTEND_PREV=
-REPEAT_INPT=false
+REPEAT_INPT=
 PROMPT_ARG=
 while getopts :c:earm:s:h opt
 do
@@ -104,7 +104,7 @@ do
     e)      EXTEND_PREV=true                        ;;
     r)      REPEAT_INPT=true                        ;;
     m)      MODEL="$OPTARG"                         ;;
-    s)      SYS_PROMPT="$OPTARG"                 ;;
+    s)      SYS_PROMPT="$OPTARG"                    ;;
     h | v ) print_usage_and_exit                    ;;
     '?')    error_exit 1 "Invalid Option: -$OPTARG" ;;
   esac
@@ -132,32 +132,39 @@ fi
 # Main Routine
 #######################################################################
  
-# === Prepare Input ===================================================
-if [ -t 0 ]; then
-  CONTENT=""
-else
-  CONTENT="$(cat -)"
-fi
-
-# === Repeat Input ====================================================
-[ "$REPEAT_INPT" = "true" ] && [ -n "$CONTENT" ] &&
-  printf "%s" "$CONTENT"
-
 # === Build Contents ==================================================
-printf "%s" "$(echo $CONTXT_FILE)"                                    |
-tr ' ' '\n'                                                           |
-grep -Ev '^-$'                                                        |
-xargs -n 1 sh -c 'echo "===> Context File: $0"; cat "$0"; echo "<==="'|
-{                                                                    
-  cat -;                                                              
-  printf "%s" "$CONTXT_FILE"                                          |
-    grep -Eq '(^-| - |-$)' && {
-    printf "===> Context Text:\n%s\n<===\n" "$CONTENT";
-    CONTENT=""
-  }
-  printf "%s" "$PROMPT_ARG"                                          
-  printf "%s" "$CONTENT"                                             
+[ -t 0 ] || {                                                         #
+  cat<<-END
+	$(${REPEAT_INPT:+tee /dev/stdout} ${REPEAT_INPT:-cat -})
+	END
 }                                                                     |
+awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" '                   #
+  BEGIN {                                                             #
+    if (length(ctx) > 0) split(ctx, files, " ")                       #
+    context = 0;                                                      #
+    for (i in files) {                                                #
+      if (files[i] == "-") {                                          #
+        context = 1                                                   #
+      } else if  (length(files[i])) {                                 #
+        print "---CONTEXT_FILE:" files[i] "---"                       #
+        system("cat \"" files[i] "\"")                                #
+        print "---END---"                                             #
+      }                                                               #
+    }                                                                 #
+  }                                                                   #
+  {                                                                   #
+    if (NR == 1) {                                                    #
+      if (context) print "---CONTEXT_TEXT---"                         #
+      else printf("%s", prompt);                                      #
+    }                                                                 #
+    print                                                             #
+  }                                                                   #
+  END {                                                               #
+    if (context) {                                                    #
+      print "---END--"                                                #
+      printf("%s", prompt);                                           #
+    }                                                                 #
+}'                                                                    |
 json_escape                                                           |
 sed 's/^\(.*\)$/{"role":"user","content":"\1"}/'                      |
 {                                                                     #

@@ -25,7 +25,7 @@ AIV is a command-line utility that allows you to interact with AI models through
 3. Create a configuration file at `~/.config/aiv/config` with your API key:
    ```
    API_KEY="your_anthropic_api_key"
-   MODEL="claude-3.7-sonnet-latest"
+   MODEL="claude-3-7-sonnet-latest"
    MAX_TOKENS=4096
    SYS_PROMPT="You are a helpful AI assistant."
    ```
@@ -67,8 +67,6 @@ Continue a conversation:
 ```
 aiv -e "Tell me more about that"
 ```
-
-### Editor Integration
 
 ### Editor Integration
 

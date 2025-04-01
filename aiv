@@ -133,38 +133,42 @@ fi
 #######################################################################
  
 # === Build Contents ==================================================
-[ -t 0 ] || {                                                         #
-  cat<<-END
-	$(${REPEAT_INPT:+tee /dev/stdout} ${REPEAT_INPT:-cat -})
-	END
-}                                                                     |
-awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" '                   #
-  BEGIN {                                                             #
-    if (length(ctx) > 0) split(ctx, files, " ")                       #
-    context = 0;                                                      #
-    for (i in files) {                                                #
-      if (files[i] == "-") {                                          #
-        context = 1                                                   #
-      } else if  (length(files[i])) {                                 #
-        print "---CONTEXT_FILE:" files[i] "---"                       #
-        system("cat \"" files[i] "\"")                                #
-        print "---END---"                                             #
+if [ -t 0 ]; then
+  printf "%s" "$PROMPT_ARG"
+else
+  {
+    cat<<-END
+		$(${REPEAT_INPT:+tee /dev/stdout} ${REPEAT_INPT:-cat -})
+		END
+  }                                                                   |
+  awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" '                 #
+    BEGIN {                                                           #
+      if (length(ctx) > 0) split(ctx, files, " ")                     #
+      context = 0;                                                    #
+      for (i in files) {                                              #
+        if (files[i] == "-") {                                        #
+          context = 1                                                 #
+        } else if  (length(files[i])) {                               #
+          print "---CONTEXT_FILE:" files[i] "---"                     #
+          system("cat \"" files[i] "\"")                              #
+          print "---END---"                                           #
+        }                                                             #
       }                                                               #
     }                                                                 #
-  }                                                                   #
-  {                                                                   #
-    if (NR == 1) {                                                    #
-      if (context) print "---CONTEXT_TEXT---"                         #
-      else printf("%s", prompt);                                      #
+    {                                                                 #
+      if (NR == 1) {                                                  #
+        if (context) print "---CONTEXT_TEXT---"                       #
+        else printf("%s", prompt);                                    #
+      }                                                               #
+      print                                                           #
     }                                                                 #
-    print                                                             #
-  }                                                                   #
-  END {                                                               #
-    if (context) {                                                    #
-      print "---END--"                                                #
-      printf("%s", prompt);                                           #
-    }                                                                 #
-}'                                                                    |
+    END {                                                             #
+      if (context) {                                                  #
+        print "---END--"                                              #
+        printf("%s", prompt);                                         #
+      }                                                               #
+  }'                                                                  #
+fi                                                                    |
 json_escape                                                           |
 sed 's/^\(.*\)$/{"role":"user","content":"\1"}/'                      |
 {                                                                     #

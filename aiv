@@ -113,13 +113,13 @@ PROMPT_ARG=
 while getopts :c:earm:s:h opt
 do
   case $opt in
-    c)      CONTXT_FILE="$CONTXT_FILE $OPTARG"      ;;
-    e)      EXTEND_PREV=true                        ;;
-    r)      REPEAT_INPT=true                        ;;
-    m)      MODEL="$OPTARG"                         ;;
-    s)      SYS_PROMPT="$OPTARG"                    ;;
-    h | v ) print_usage_and_exit                    ;;
-    '?')    error_exit 1 "Invalid Option: -$OPTARG" ;;
+    c)      CONTXT_FILE="$CONTXT_FILE $OPTARG"       ;;
+    e)      EXTEND_PREV=true                         ;;
+    r)      REPEAT_INPT=true                         ;;
+    m)      MODEL="$OPTARG"                          ;;
+    s)      SYS_PROMPT="$OPTARG"                     ;;
+    h | v ) print_usage_and_exit                     ;;
+    '?')    error_exit 1 "Invalid Option: -$OPTARG"  ;;
   esac
 done
 shift $((OPTIND - 1))
@@ -130,12 +130,12 @@ touch $CONVERSATION
 
 if [ ! -f "$CONVERSATION" ] || [ "$EXTEND_PREV" != "true" ]; then
   if [ -n "$SYS_PROMPT" ]; then
-    printf "%s" "$SYS_PROMPT"                        |
-    json_escape                                      |
-    sed 's/^\(.*\)$/"system":"\1","messages":[/'     \
+    printf "%s" "$SYS_PROMPT"                         |
+    json_escape                                       |
+    sed 's/^\(.*\)$/"system":"\1","messages":[/'      \
     > "$CONVERSATION"
   else
-    printf "%s\n" '"messages":['                     \
+    printf "%s\n" '"messages":['                      \
     > "$CONVERSATION"
   fi 
 fi
@@ -149,52 +149,52 @@ fi
 if [ -t 0 ]; then
   printf "%s" "$PROMPT_ARG"
 else
-  awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" '#
-    BEGIN {                                          #
-      if (length(ctx) > 0) split(ctx, files, " ")    #
-      context = 0;                                   #
-      for (i in files) {                             #
-        if (files[i] == "-") {                       #
-          context = 1                                #
-        } else if  (length(files[i])) {              #
-          print "---CONTEXT_FILE:" files[i] "---"    #
-          system("cat \"" files[i] "\"")             #
-          print "---END---"                          #
-        }                                            #
-      }                                              #
-    }                                                #
-    {                                                #
-      if (NR == 1) {                                 #
-        if (context) print "---CONTEXT_TEXT---"      #
-        else printf("%s\n---STDIN---\n", prompt);    #
-      }                                              #
-      print                                          #
-    }                                                #
-    END {                                            #
-      if (context) {                                 #
-        print "---END---"                            #
-        printf("%s", prompt);                        #
-      } else if (NR>0) {                             #
-        print "---END---"                            #
-      } else if (NR==0)  {                           #
-        printf("%s", prompt);                        #
-      }                                              #
-  }'                                                 #
-fi                                                   |
-json_escape                                          |
-sed 's/^\(.*\)$/{"role":"user","content": "\1"}/'    |
-{                                                    #
-  if [ -s "$CONVERSATION" ] &&                       #
-    tail -c 2 "$CONVERSATION" | grep -q '\[';        #
-  then                                               #
-    cat                                              #
-  else                                               #
-    sed 's/^/,/'                                     #
-  fi                                                 #
-}                                                    |
-tee -a "$CONVERSATION"                               |
+  awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" ' #
+    BEGIN {                                           #
+      if (length(ctx) > 0) split(ctx, files, " ")     #
+      context = 0;                                    #
+      for (i in files) {                              #
+        if (files[i] == "-") {                        #
+          context = 1                                 #
+        } else if  (length(files[i])) {               #
+          print "---CONTEXT_FILE:" files[i] "---"     #
+          system("cat \"" files[i] "\"")              #
+          print "---END---"                           #
+        }                                             #
+      }                                               #
+    }                                                 #
+    {                                                 #
+      if (NR == 1) {                                  #
+        if (context) print "---CONTEXT_TEXT---"       #
+        else printf("%s\n---STDIN---\n", prompt);     #
+      }                                               #
+      print                                           #
+    }                                                 #
+    END {                                             #
+      if (context) {                                  #
+        print "---END---"                             #
+        printf("%s", prompt);                         #
+      } else if (NR>0) {                              #
+        print "---END---"                             #
+      } else if (NR==0)  {                            #
+        printf("%s", prompt);                         #
+      }                                               #
+  }'                                                  #
+fi                                                    |
+json_escape                                           |
+sed 's/^\(.*\)$/{"role":"user","content": "\1"}/'     |
+{                                                     #
+  if [ -s "$CONVERSATION" ] &&                        #
+    tail -c 2 "$CONVERSATION" | grep -q '\[';         #
+  then                                                #
+    cat                                               #
+  else                                                #
+    sed 's/^/,/'                                      #
+  fi                                                  #
+}                                                     |
+tee -a "$CONVERSATION"                                |
 if [ -n "$REPEAT_INPT" ]; then
-  sed 's/.*---STDIN---\\n\(..*\)\\n---END---.*/\1/'  |
+  sed 's/.*---STDIN---\\n\(..*\)\\n---END---.*/\1/'   |
   json_extract
 fi
   
@@ -219,21 +219,21 @@ HEADERS)
 
 REQ_CMD=
 if command -v curl >/dev/null 2>&1; then
-  HEADERS=$(printf "%s" "$HEADERS" |
-            sed 's/.*/-H "&" /'    |
+  HEADERS=$(printf "%s" "$HEADERS"                    |
+            sed 's/.*/-H "&" /'                       |
             tr -d '\n')
   REQ_CMD="curl -s $URL $HEADERS -d @-"
 else
   error_exit 1 "curl not found"
 fi
 
-cat "$CONVERSATION"                           |
-sed -e '1s/^/'"$BODY_PARTS"'/' -e '$s/$/]}/'  |
-tr -d '\n'                                    |
-eval "$REQ_CMD"                               |
-sed 's/.*"content":\[{\(.*"}\)\],.*/\1/'      |
-sed 's/.*"text":\(".*[^\]}\)$/\1/'            |
-sed 's/^/,{"role": "assistant", "content": /' |
-tee -a "$CONVERSATION"                        |
-sed 's/.*"content": "\(.*\)"}$/\1/'           |
+cat "$CONVERSATION"                                   |
+sed -e '1s/^/'"$BODY_PARTS"'/' -e '$s/$/]}/'          |
+tr -d '\n'                                            |
+eval "$REQ_CMD"                                       |
+sed 's/.*"content":\[{\(.*"}\)\],.*/\1/'              |
+sed 's/.*"text":\(".*[^\]}\)$/\1/'                    |
+sed 's/^/,{"role": "assistant", "content": /'         |
+tee -a "$CONVERSATION"                                |
+sed 's/.*"content": "\(.*\)"}$/\1/'                   |
 json_extract

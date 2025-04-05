@@ -41,7 +41,7 @@ error_exit () {
   exit $1
 }
 
-# === JSON Escape Function =============================================
+# === JSON Functions ===================================================
 json_escape() {
   tab="	"
   cr=$(printf '\r')
@@ -57,6 +57,19 @@ json_escape() {
       print $0 
     }
   '
+}
+json_extract() {
+  awk '{
+    gsub(/\\\\n/, "\n")
+    gsub(/\\n/, "\n")
+    gsub(/\\\\t/, "\t")
+    gsub(/\\t/, "\t")
+    gsub(/\\"/, "\"")
+    gsub(/\\\\r/, "\r")
+    gsub(/\\r/, "\r")
+    gsub(/^"|"$/, "")
+    print
+  }'
 }
 
 #######################################################################
@@ -74,9 +87,9 @@ MAX_TOKENS=
 SYS_PROMPT=
 
 while IFS='=' read -r key value; do
-  value=$(printf "%s\n" "$value"                                      |
-    sed -e 's/^"//' -e 's/" *$//'                                     |
-    tr -d '\n'                                                        )
+  value=$(printf "%s\n" "$value"                      |
+    sed -e 's/^"//' -e 's/" *$//'                     |
+    tr -d '\n'                                        )
   case "$(echo "$key" | tr '[:upper:]' '[:lower:]')" in
     api_key) API_KEY="$value"                        ;;
     model) MODEL="$value"                            ;;
@@ -84,11 +97,11 @@ while IFS='=' read -r key value; do
     system_prompt|sys_prompt) SYS_PROMPT="$value"    ;;
   esac
 done << END
-$(cat "$CONFIG_FILE"                                                  |
-sed 's/#.*$//'                                                        |
-sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'                     |
-grep -v '^$'                                                          |
-grep -Ei '^(API_KEY|MODEL|MAX_TOKENS|SYS_PROMPT)='                    ) 
+$(cat "$CONFIG_FILE"                                  |
+sed 's/#.*$//'                                        |
+sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'     |
+grep -v '^$'                                          |
+grep -Ei '^(API_KEY|MODEL|MAX_TOKENS|SYS_PROMPT)='    ) 
 END
 
 # === Parse Arguments =================================================
@@ -117,12 +130,12 @@ touch $CONVERSATION
 
 if [ ! -f "$CONVERSATION" ] || [ "$EXTEND_PREV" != "true" ]; then
   if [ -n "$SYS_PROMPT" ]; then
-    printf "%s" "$SYS_PROMPT"                                       |
-    json_escape                                                     |
-    sed 's/^\(.*\)$/"system":"\1","messages":[/'                    \
+    printf "%s" "$SYS_PROMPT"                        |
+    json_escape                                      |
+    sed 's/^\(.*\)$/"system":"\1","messages":[/'     \
     > "$CONVERSATION"
   else
-    printf "%s\n" '"messages":['                                    \
+    printf "%s\n" '"messages":['                     \
     > "$CONVERSATION"
   fi 
 fi
@@ -136,50 +149,55 @@ fi
 if [ -t 0 ]; then
   printf "%s" "$PROMPT_ARG"
 else
-  {
-    cat<<-END
-		$(${REPEAT_INPT:+tee /dev/stdout} ${REPEAT_INPT:-cat -})
-		END
-  }                                                                   |
-  awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" '                 #
-    BEGIN {                                                           #
-      if (length(ctx) > 0) split(ctx, files, " ")                     #
-      context = 0;                                                    #
-      for (i in files) {                                              #
-        if (files[i] == "-") {                                        #
-          context = 1                                                 #
-        } else if  (length(files[i])) {                               #
-          print "---CONTEXT_FILE:" files[i] "---"                     #
-          system("cat \"" files[i] "\"")                              #
-          print "---END---"                                           #
-        }                                                             #
-      }                                                               #
-    }                                                                 #
-    {                                                                 #
-      if (NR == 1) {                                                  #
-        if (context) print "---CONTEXT_TEXT---"                       #
-        else printf("%s", prompt);                                    #
-      }                                                               #
-      print                                                           #
-    }                                                                 #
-    END {                                                             #
-      if (context) {                                                  #
-        print "---END--"                                              #
-        printf("%s", prompt);                                         #
-      }                                                               #
-  }'                                                                  #
-fi                                                                    |
-json_escape                                                           |
-sed 's/^\(.*\)$/{"role":"user","content":"\1"}/'                      |
-{                                                                     #
-  if [ -s "$CONVERSATION" ] &&                                        #
-    tail -c 2 "$CONVERSATION" | grep -q '\[';                         #
-  then                                                                #
-    cat                                                               #
-  else                                                                #
-    sed 's/^/,/'                                                      #
-  fi                                                                  #
-} >> "$CONVERSATION"
+  awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" '#
+    BEGIN {                                          #
+      if (length(ctx) > 0) split(ctx, files, " ")    #
+      context = 0;                                   #
+      for (i in files) {                             #
+        if (files[i] == "-") {                       #
+          context = 1                                #
+        } else if  (length(files[i])) {              #
+          print "---CONTEXT_FILE:" files[i] "---"    #
+          system("cat \"" files[i] "\"")             #
+          print "---END---"                          #
+        }                                            #
+      }                                              #
+    }                                                #
+    {                                                #
+      if (NR == 1) {                                 #
+        if (context) print "---CONTEXT_TEXT---"      #
+        else printf("%s\n---STDIN---\n", prompt);    #
+      }                                              #
+      print                                          #
+    }                                                #
+    END {                                            #
+      if (context) {                                 #
+        print "---END---"                            #
+        printf("%s", prompt);                        #
+      } else if (NR>0) {                             #
+        print "---END---"                            #
+      } else if (NR==0)  {                           #
+        printf("%s", prompt);                        #
+      }                                              #
+  }'                                                 #
+fi                                                   |
+json_escape                                          |
+sed 's/^\(.*\)$/{"role":"user","content": "\1"}/'    |
+{                                                    #
+  if [ -s "$CONVERSATION" ] &&                       #
+    tail -c 2 "$CONVERSATION" | grep -q '\[';        #
+  then                                               #
+    cat                                              #
+  else                                               #
+    sed 's/^/,/'                                     #
+  fi                                                 #
+}                                                    |
+tee -a "$CONVERSATION"                               |
+if [ -n "$REPEAT_INPT" ]; then
+  sed 's/.*---STDIN---\\n\(..*\)\\n---END---.*/\1/'  |
+  json_extract
+fi
+  
 
 # === End If We Have Only Context =====================================
 if [ -z "$PROMPT_ARG" ] &&
@@ -201,29 +219,21 @@ HEADERS)
 
 REQ_CMD=
 if command -v curl >/dev/null 2>&1; then
-  HEADERS=$(printf "%s" "$HEADERS" | sed 's/.*/-H "&" /' | tr -d '\n')
+  HEADERS=$(printf "%s" "$HEADERS" |
+            sed 's/.*/-H "&" /'    |
+            tr -d '\n')
   REQ_CMD="curl -s $URL $HEADERS -d @-"
 else
   error_exit 1 "curl not found"
 fi
 
-cat $CONVERSATION                             |
+cat "$CONVERSATION"                           |
 sed -e '1s/^/'"$BODY_PARTS"'/' -e '$s/$/]}/'  |
 tr -d '\n'                                    |
 eval "$REQ_CMD"                               |
 sed 's/.*"content":\[{\(.*"}\)\],.*/\1/'      |
 sed 's/.*"text":\(".*[^\]}\)$/\1/'            |
 sed 's/^/,{"role": "assistant", "content": /' |
-tee -a $CONVERSATION                          |
-sed 's/.*"content": "\([^}]*[^\]\)"}$/\1/'    |
-awk '{                                        #
-  gsub(/\\\\n/, "\n")                         #
-  gsub(/\\n/, "\n")                           #
-  gsub(/\\\\t/, "\t")                         #
-  gsub(/\\t/, "\t")                           #
-  gsub(/\\"/, "\"")                           #
-  gsub(/\\\\r/, "\r")                         #
-  gsub(/\\r/, "\r")                           #
-  gsub(/^"|"$/, "")                           #
-  print                                       #
-}'                                            #
+tee -a "$CONVERSATION"                        |
+sed 's/.*"content": "\(.*\)"}$/\1/'           |
+json_extract

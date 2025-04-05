@@ -49,36 +49,44 @@ aiv [options] [prompt]
 ### Examples
 
 Basic usage:
-```
+```shell
 echo "What is Unix?" | aiv
 ```
 
 Adding context from a file:
-```
+```shell
 aiv -c mycode.js "Explain this code"
 ```
 
 Adding context from stdin and files:
-```
+```shell
 cat mydata.txt | aiv -c - -c file1.txt -c file2.txt "Summarize this data"
 ```
 
 Continue a conversation:
-```
+```shell
 aiv -e "Tell me more about that"
 ```
 
 ### Editor Integration
 
-In an editor, you can add the selected text to the conversation context:
+In an editor, you can add the selected text to the conversation context.
+The `-e` option maintains the previous conversation thread:
+You can use the pipe function of your editor which ignores output:
+```shell
+aiv -c - -e 
 ```
-aiv -c - -c file1.txt -c file2.txt -r -e 
-```
-The `-r` option is necessary to retain the selected content in the editor, and the `-e` option maintains the previous conversation thread.
 
-After adding context, you can generate new content with additional commands:
-```
+After adding context, you can generate new content with additional commands.
+You can use the shell command, inserting output.
+```shell
 aiv -e "generate something"
+```
+
+The `-r` option to re-output the input is particularly useful when using in an editor.
+This allows you to insert AI output after the selected text in the editor.
+```shell
+aiv -r ["some prompt"]
 ```
 
 This workflow lets you seamlessly integrate AI assistance while editing, maintaining conversation context between commands for more coherent assistance.

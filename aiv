@@ -168,11 +168,18 @@ else
   awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" ' #
     BEGIN {                                           #
       if (length(ctx) > 0) {
-        cmd = "ls " ctx
-        while ((cmd | getline file) > 0) {
-          files[++count] = file
+        split(ctx, temp_files, " ")
+        for (i in temp_files) {
+          if (temp_files[i] != "-" && length(temp_files[i]) > 0) {
+            cmd = "ls " temp_files[i]
+            while ((cmd | getline file) > 0) {
+              files[++count] = file
+            }
+            close(cmd)
+          } else if (temp_files[i] == "-") {
+            files[++count] = "-"
+          }
         }
-        close(cmd)
       }
       context = 0;                                    #
       for (i in files) {                              #

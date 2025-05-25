@@ -43,30 +43,46 @@ error_exit () {
 
 # === JSON Functions ===================================================
 json_escape() {
-  tab="	"
-  cr=$(printf '\r')
   sed '
     s/\\/\\\\/g;
     s/"/\\"/g;
-    s/'"$tab"'/\\t/g
-  ' | sed 's/'"$cr"'/\\r/g' | awk '
-    BEGIN { ORS=""; first=1 } 
-    { 
-      if (first) { first=0 } 
-      else { print "\\n" }
-      print $0 
+    s/'"$(printf '\b')"'/\\b/g;
+    s/'"$(printf '\f')"'/\\f/g;
+    s/'"$(printf '\t')"'/\\t/g;
+    s/'"$(printf '\r')"'/\\r/g;
+  ' | awk '
+    BEGIN {
+      ORS="";
+      first=1
+    }
+    {
+      if (first) {
+        first=0
+      } else {
+        print "\\n"
+      }
+      gsub(/\n/, "\\n")
+      print $0
     }
   '
 }
+
 json_extract() {
   awk '{
     gsub(/\\\\n/, "\n")
     gsub(/\\n/, "\n")
     gsub(/\\\\t/, "\t")
     gsub(/\\t/, "\t")
-    gsub(/\\"/, "\"")
     gsub(/\\\\r/, "\r")
     gsub(/\\r/, "\r")
+    gsub(/\\\\b/, "\b")
+    gsub(/\\b/, "\b")
+    gsub(/\\\\f/, "\f")
+    gsub(/\\f/, "\f")
+    gsub(/\\\\"/, "\"")
+    gsub(/\\"/, "\"")
+    gsub(/\\\\\\\\/, "\\")
+    gsub(/\\\\/, "\\")
     gsub(/^"|"$/, "")
     print
   }'
@@ -151,7 +167,13 @@ if [ -t 0 ]; then
 else
   awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" ' #
     BEGIN {                                           #
-      if (length(ctx) > 0) split(ctx, files, " ")     #
+      if (length(ctx) > 0) {
+        cmd = "ls " ctx
+        while ((cmd | getline file) > 0) {
+          files[++count] = file
+        }
+        close(cmd)
+      }
       context = 0;                                    #
       for (i in files) {                              #
         if (files[i] == "-") {                        #

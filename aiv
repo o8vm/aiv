@@ -162,9 +162,6 @@ fi
 #######################################################################
  
 # === Build Contents ==================================================
-if [ -t 0 ]; then
-  printf "%s" "$PROMPT_ARG"
-else
   awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" ' #
     BEGIN {                                           #
       if (length(ctx) > 0) {
@@ -208,8 +205,77 @@ else
       } else if (NR==0)  {                            #
         printf("%s", prompt);                         #
       }                                               #
-  }'                                                  #
-fi                                                    |
+  }'                                                  |
+awk '
+/^---CONTEXT_TEXT---$|^---STDIN---$/ {
+  in_section = 1
+  section_type = ($0 ~ /CONTEXT/) ? "context" : "stdin"
+  section_header = $0
+  section_content = ""
+  next
+}
+
+/^---END---$/ {
+  if (in_section) {
+    # Process the buffered section
+    if (length(section_content) > 0) {
+      # Remove leading/trailing newlines
+      gsub(/^\n+|\n+$/, "", section_content)
+      
+      # Search for the content in files
+      escaped_content = section_content
+      gsub(/'\''/, "'\''\"'\''\"'\''", escaped_content)
+      
+      # Try to find exact match first
+      cmd = "grep -Frn '\''" escaped_content "'\'' ./ 2>/dev/null | head -1"
+      location = ""
+      
+      if ((cmd | getline result) > 0) {
+        split(result, parts, ":")
+        if (length(parts) >= 2) {
+          file = parts[1]
+          line_start = parts[2]
+          
+          # Count lines in content
+          num_lines = split(section_content, temp_arr, "\n")
+          line_end = line_start + num_lines - 1
+          
+          location = "[" file ":" line_start ":" line_end "]"
+        }
+      }
+      close(cmd)
+      
+      # Print section with location
+      print section_header location
+      print section_content
+    } else {
+      # Non-context section, print as-is
+      print section_header
+      if (length(section_content) > 0) {
+        print ""
+        print section_content
+      }
+    }
+    
+    in_section = 0
+    section_content = ""
+  }
+  print
+  next
+}
+
+{
+  if (in_section) {
+    if (length(section_content) > 0) {
+      section_content = section_content "\n" $0
+    } else {
+      section_content = $0
+    }
+  } else {
+    print
+  }
+}
+' |
 json_escape                                           |
 sed 's/^\(.*\)$/{"role":"user","content": "\1"}/'     |
 {                                                     #

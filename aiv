@@ -162,31 +162,38 @@ fi
 #######################################################################
  
 # === Build Contents ==================================================
-  awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG" ' #
+awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG"   ' #
     BEGIN {                                           #
-      if (length(ctx) > 0) {
-        split(ctx, temp_files, " ")
-        for (i in temp_files) {
-          if (temp_files[i] != "-" && length(temp_files[i]) > 0) {
-            cmd = "ls " temp_files[i]
-            while ((cmd | getline file) > 0) {
-              files[++count] = file
-            }
-            close(cmd)
-          } else if (temp_files[i] == "-") {
-            files[++count] = "-"
-          }
-        }
-      }
+      pipe_status = system("test -t 0")               #
+      pipe_exists = (pipe_status != 0)                #
+      if (length(ctx) > 0) {                          #
+        split(ctx, temp_files, " ")                   #
+        for (i in temp_files) {                       #
+          if (temp_files[i] != "-" &&                 #
+                length(temp_files[i]) > 0) {          #
+            cmd = "ls " temp_files[i]                 #
+            while ((cmd | getline file) > 0) {        #
+              files[++count] = file                   #
+            }                                         #
+            close(cmd)                                #
+          } else if (temp_files[i] == "-") {          #
+            files[++count] = "-"                      #
+          }                                           #
+        }                                             #
+      }                                               #
       context = 0;                                    #
       for (i in files) {                              #
         if (files[i] == "-") {                        #
           context = 1                                 #
         } else if  (length(files[i])) {               #
-          print "---CONTEXT_FILE:" files[i] "---"     #
+          print "---CONTEXT_FILE:[" files[i] "]---"   #
           system("cat \"" files[i] "\"")              #
           print "---END---"                           #
         }                                             #
+      }                                               #
+      if (!pipe_exists && !context) {                 #
+        printf("%s", prompt);                         #
+        exit 0;                                       #
       }                                               #
     }                                                 #
     {                                                 #
@@ -202,80 +209,80 @@ fi
         printf("%s", prompt);                         #
       } else if (NR>0) {                              #
         print "---END---"                             #
-      } else if (NR==0)  {                            #
-        printf("%s", prompt);                         #
       }                                               #
   }'                                                  |
-awk '
-/^---CONTEXT_TEXT---$|^---STDIN---$/ {
-  in_section = 1
-  section_type = ($0 ~ /CONTEXT/) ? "context" : "stdin"
-  section_header = $0
-  section_content = ""
-  next
-}
-
-/^---END---$/ {
-  if (in_section) {
-    # Process the buffered section
-    if (length(section_content) > 0) {
-      # Remove leading/trailing newlines
-      gsub(/^\n+|\n+$/, "", section_content)
-      
-      # Search for the content in files
-      escaped_content = section_content
-      gsub(/'\''/, "'\''\"'\''\"'\''", escaped_content)
-      
-      # Try to find exact match first
-      cmd = "grep -Frn '\''" escaped_content "'\'' ./ 2>/dev/null | head -1"
-      location = ""
-      
-      if ((cmd | getline result) > 0) {
-        split(result, parts, ":")
-        if (length(parts) >= 2) {
-          file = parts[1]
-          line_start = parts[2]
-          
-          # Count lines in content
-          num_lines = split(section_content, temp_arr, "\n")
-          line_end = line_start + num_lines - 1
-          
-          location = "[" file ":" line_start ":" line_end "]"
-        }
-      }
-      close(cmd)
-      
-      # Print section with location
-      print section_header location
-      print section_content
-    } else {
-      # Non-context section, print as-is
-      print section_header
-      if (length(section_content) > 0) {
-        print ""
-        print section_content
-      }
-    }
-    
-    in_section = 0
-    section_content = ""
-  }
-  print
-  next
-}
-
-{
-  if (in_section) {
-    if (length(section_content) > 0) {
-      section_content = section_content "\n" $0
-    } else {
-      section_content = $0
-    }
-  } else {
-    print
-  }
-}
-' |
+awk '                                                 #
+/^---CONTEXT_TEXT---$|^---STDIN---$/ {                #
+  in_sec = 1                                          #
+  sec_type = ($0 ~ /CONTEXT/) ? "ctx" : "stdin"       #
+  sec_header = $0                                     #
+  sec_cont = ""                                       #
+  next                                                #
+}                                                     #
+/^---END---$/ {                                       #
+  if (in_sec) {                                       #
+    # Process the buffered sec                        #
+    if (length(sec_cont) > 0) {                       #
+      # Remove leading/trailing newlines              #
+      gsub(/^\n+|\n+$/, "", sec_cont)                 #
+                                                      #
+      # Search for the content in files               #
+      esc_cont = sec_cont                             #
+      gsub(/'\''/, "'\''\"'\''\"'\''", esc_cont)      #
+                                                      #
+      # Try to find exact match first                 #
+      cmd = "grep -Frn '\''" esc_cont "'\'' ./        \
+              2>/dev/null | head -1 | sed 's:^\./::'  "
+      location = ""                                   #
+                                                      #
+      if ((cmd | getline result) > 0) {               #
+        split(result, parts, ":")                     #
+        if (length(parts) >= 2) {                     #
+          file = parts[1]                             #
+          ln_s = parts[2]                             #
+                                                      #
+          # Count lines in content                    #
+          num_lines = split(sec_cont, temp_arr, "\n") #
+          ln_e = ln_s + num_lines - 1                 #
+                                                      #
+          location = "[" file ":" ln_s ":" ln_e "]"   #
+        }                                             #
+      }                                               #
+      close(cmd)                                      #
+                                                      #
+      # Print sec with location                       #
+      if (sec_type == "ctx") {                        #
+        printf("---CONTEXT_TXT:%s---\n", location)    #
+      } else if (sec_type = "stdin") {                #
+        printf("---STDIN:%s---\n", location)          #
+      }                                               #
+      print sec_cont                                  #
+    } else {                                          #
+      # Non-context sec, print as-is                  #
+      print sec_header                                #
+      if (length(sec_cont) > 0) {                     #
+        print ""                                      #
+        print sec_cont                                #
+      }                                               #
+    }                                                 #
+                                                      #
+    in_sec = 0                                        #
+    sec_cont = ""                                     #
+  }                                                   #
+  print                                               #
+  next                                                #
+}                                                     #
+{                                                     #
+  if (in_sec) {                                       #
+    if (length(sec_cont) > 0) {                       #
+      sec_cont = sec_cont "\n" $0                     #
+    } else {                                          #
+      sec_cont = $0                                   #
+    }                                                 #
+  } else {                                            #
+    print                                             #
+  }                                                   #
+}'                                                    |
 json_escape                                           |
 sed 's/^\(.*\)$/{"role":"user","content": "\1"}/'     |
 {                                                     #

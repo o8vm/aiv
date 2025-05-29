@@ -297,7 +297,7 @@ sed 's/^\(.*\)$/{"role":"user","content": "\1"}/'     |
 tee -a "$CONVERSATION"                                |
 cat                                                   |
 if [ -n "$REPEAT_INPT" ]; then
-  sed 's/.*---STDIN---\\n\(..*\)\\n---END---.*/\1/'   |
+  sed 's/.*---STDIN.*---\\n\(..*\)\\n---END---.*/\1/'   |
   json_extract
 fi
   

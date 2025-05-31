@@ -211,113 +211,112 @@ awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG"   ' #
         print "---END---"                             #
       }                                               #
   }'                                                  |
-awk '                                                      #
-/^---CONTEXT_TEXT---$|^---STDIN---$/ {                     #
-  in_sec = 1                                               #
-  sec_type = ($0 ~ /CONTEXT/) ? "ctx" : "stdin"            #
-  sec_header = $0                                          #
-  sec_cont = ""                                            #
-  next                                                     #
-}                                                          #
-/^---END---$/ {                                            #
-  if (in_sec) {                                            #
-    # Process the buffered sec                             #
-    if (length(sec_cont) > 0) {                            #
-      # Remove leading/trailing newlines                   #
-      gsub(/^\n+|\n+$/, "", sec_cont)                      #
-                                                           #
-      # Count lines in content                             #
-      num_lines = split(sec_cont, lines, "\n")             #
-                                                           #
-      # Find first non-empty line for final search         #
-      first_line = ""                                      #
-      for (i = 1; i <= num_lines; i++) {                   #
-        if (length(lines[i]) > 0) {                        #
-          first_line = lines[i]                            #
-          break                                            #
-        }                                                  #
-      }                                                    #
-                                                           #
-      # Remove empty lines and create search pattern       #
-      search_pattern = ""                                  #
-      for (i = 1; i <= num_lines; i++) {                   #
-        if (length(lines[i]) > 0) {                        #
-          if (search_pattern != "") {                      #
-            search_pattern = search_pattern "|"            #
-          }                                                #
-          # Escape special chars                           #
-          esc_line = lines[i]                              #
-          gsub(/[\[\](){}.*+?^$|\\]/, "\\\\&", esc_line)   #
-          search_pattern = search_pattern esc_line         #
-        }                                                  #
-      }                                                    #
-                                                           #
-      # Escape quotes for shell                            #
-      gsub(/'\''/, "'\''\"'\''\"'\''", search_pattern)     #
-                                                           #
-      # Find best matching file using grep -E              #
-      cmd = "grep --exclude-dir target --exclude-dir .git  \
-            --exclude chat.md                              \
-            -Ern '\''(" search_pattern ")'\'' *            \
-            2>/dev/null | cut -d: -f1 | uniq -c |          \
-            sort -nr | head -1 |                           \
-            awk '\''{print $2}'\''"                        #
-                                                           #
-      best_file = ""                                       #
-      loc = ""                                             #
-      if ((cmd | getline best_file) > 0) {                 #
-        # Search first line in the best matching file      #
-        if (first_line != "") {                            #
-          gsub(/[\[\](){}.*+?^$|\\]/, "\\\\&", first_line) #
-          gsub(/'\''/, "'\''\"'\''\"'\''", first_line)     #
-                                                           #
-          cmd2 = "grep -n '\''" first_line "'\''           \
-                 \"" best_file "\" 2>/dev/null |           \
-                 head -1 | cut -d: -f1"                    #
-                                                           #
-          line_num = ""                                    #
-          if ((cmd2 | getline line_num) > 0) {             #
-            ln_s = line_num;                               #
-            ln_e = line_num + num_lines - 1;               #
-            loc = "[" best_file ":" ln_s ":" ln_e "]"      #
-          }                                                #
-          close(cmd2)                                      #
-        }                                                  #
-      }                                                    #
-      close(cmd)                                           #
-                                                           #
-      # Print sec with location                            #
-      if (sec_type == "ctx") {                             #
-        printf("---CONTEXT_TXT:%s---\n", loc)              #
-      } else if (sec_type = "stdin") {                     #
-        printf("---STDIN:%s---\n", loc)                    #
-      }                                                    #
-      print sec_cont                                       #
-    } else {                                               #
-      # Non-context sec, print as-is                       #
-      print sec_header                                     #
-      if (length(sec_cont) > 0) {                          #
-        print ""                                           #
-        print sec_cont                                     #
-      }                                                    #
-    }                                                      #
-                                                           #
-    in_sec = 0                                             #
-    sec_cont = ""                                          #
-  }                                                        #
-  print                                                    #
-  next                                                     #
-}                                                          #
-{                                                          #
-  if (in_sec) {                                            #
-    if (length(sec_cont) > 0) {                            #
-      sec_cont = sec_cont "\n" $0                          #
-    } else {                                               #
-      sec_cont = $0                                        #
-    }                                                      #
-  } else {                                                 #
-    print                                                  #
-  }                                                        #
+awk '                                                 #
+/^---CONTEXT_TEXT---$|^---STDIN---$/ {                #
+  in_sec = 1                                          #
+  sec_type = ($0 ~ /CONTEXT/) ? "ctx" : "stdin"       #
+  sec_header = $0                                     #
+  sec_cont = ""                                       #
+  next                                                #
+}                                                     #
+/^---END---$/ {                                       #
+  if (in_sec) {                                       #
+    # Process the buffered sec                        #
+    if (length(sec_cont) > 0) {                       #
+      # Remove leading/trailing newlines              #
+      gsub(/^\n+|\n+$/, "", sec_cont)                 #
+                                                      #
+      # Count lines in content                        #
+      num_lines = split(sec_cont, lines, "\n")        #
+                                                      #
+      # Find first non-empty line for final search    #
+      first_line = ""                                 #
+      for (i = 1; i <= num_lines; i++) {              #
+        if (length(lines[i]) > 0) {                   #
+          first_line = lines[i]                       #
+          break                                       #
+        }                                             #
+      }                                               #
+                                                      #
+      search_pattern = ""                             #
+      for (i = 1; i <= num_lines; i++) {              #
+        trimmed = lines[i]                            #
+        gsub(/[ \t]/, "", trimmed)                    #
+        if (length(trimmed) > 5) {                    #
+          if (search_pattern != "") {                 #
+            search_pattern = search_pattern "\\n"     #
+          }                                           #
+          # Escape special chars                      #
+          esc_line = lines[i]                         #
+          gsub(/'\''/, "'\''\"'\''\"'\''", esc_line)  #
+          search_pattern = search_pattern esc_line    #
+        }                                             #
+      }                                               #
+                                                      #
+      # Find best matching file using grep -F         #
+      cmd = "printf '\''" search_pattern "'\''      |"\
+            "grep -r                                 "\
+            "--exclude-dir target                    "\
+            "--exclude-dir .git                      "\
+            "--exclude chat.md                       "\
+            "-Fnf - . 2>/dev/null                   |"\
+            "cut -d: -f1                            |"\
+            "uniq -c                                |"\
+            "sort -nr                               |"\
+            "head -1                                |"\
+            "awk '\''{print $2}'\''"                  #
+                                                      #
+      best_file = ""                                  #
+      loc = ""                                        #
+      if ((cmd | getline best_file) > 0) {            #
+        if (first_line != "") {                       #
+          gsub(/'\''/, "'\''\"'\''\"'\''", first_line)#
+          cmd2 = "grep -Fn '\''" first_line "'\''    "\
+                 "\"" best_file "\" 2>/dev/null     |"\
+                 "head -1                           |"\
+                 "cut -d: -f1"                        #
+          ln_s = ""                                   #
+          if ((cmd2 | getline ln_s) > 0) {            #
+            ln_e = ln_s + num_lines - 1;              #
+            loc = "[" best_file ":" ln_s ":" ln_e "]" #
+          }                                           #
+          close(cmd2)                                 #
+        }                                             #
+      }                                               #
+      close(cmd)                                      #
+                                                      #
+      # Print sec with location                       #
+      if (sec_type == "ctx") {                        #
+        printf("---CONTEXT_TXT:%s---\n", loc)         #
+      } else if (sec_type = "stdin") {                #
+        printf("---STDIN:%s---\n", loc)               #
+      }                                               #
+      print sec_cont                                  #
+    } else {                                          #
+      # Non-context sec, print as-is                  #
+      print sec_header                                #
+      if (length(sec_cont) > 0) {                     #
+        print ""                                      #
+        print sec_cont                                #
+      }                                               #
+    }                                                 #
+                                                      #
+    in_sec = 0                                        #
+    sec_cont = ""                                     #
+  }                                                   #
+  print                                               #
+  next                                                #
+}                                                     #
+{                                                     #
+  if (in_sec) {                                       #
+    if (length(sec_cont) > 0) {                       #
+      sec_cont = sec_cont "\n" $0                     #
+    } else {                                          #
+      sec_cont = $0                                   #
+    }                                                 #
+  } else {                                            #
+    print                                             #
+  }                                                   #
 }'                                                    |
 json_escape                                           |
 sed 's/^\(.*\)$/{"role":"user","content": "\1"}/'     |
@@ -336,8 +335,6 @@ if [ -n "$REPEAT_INPT" ]; then
   sed 's/.*---STDIN.*---\\n\(..*\)\\n---END---.*/\1/' |
   json_extract
 fi
-exit
-  
 
 # === End If We Have Only Context =====================================
 if [ -z "$PROMPT_ARG" ] &&

@@ -209,6 +209,8 @@ awk -v ctx="$CONTXT_FILE" -v prompt="$PROMPT_ARG"   ' #
         printf("%s", prompt);                         #
       } else if (NR>0) {                              #
         print "---END---"                             #
+      } else if (pipe_exists && NR == 0) {            #
+        printf("%s", prompt);                         #
       }                                               #
   }'                                                  |
 awk '                                                 #

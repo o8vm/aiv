@@ -256,7 +256,7 @@ awk '                                                 #
       }                                               #
                                                       #
       # Find best matching file using grep -F         #
-      cmd = "printf '\''" search_pattern "'\''      |"\
+      cmd = "printf '%s' '\''" search_pattern "'\'' |"\
             "grep -r                                 "\
             "--exclude-dir target                    "\
             "--exclude-dir .git                      "\

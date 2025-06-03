@@ -332,10 +332,11 @@ sed 's/^\(.*\)$/{"role":"user","content": "\1"}/'     |
   fi                                                  #
 }                                                     |
 tee -a "$CONVERSATION"                                |
-cat                                                   |
 if [ -n "$REPEAT_INPT" ]; then
   sed 's/.*---STDIN.*---\\n\(..*\)\\n---END---.*/\1/' |
   json_extract
+else
+  cat - >/dev/null
 fi
 
 # === End If We Have Only Context =====================================
@@ -374,6 +375,5 @@ sed 's/.*"content":\[{\(.*"}\)\],.*/\1/'              |
 sed 's/.*"text":\(".*[^\]}\)$/\1/'                    |
 sed 's/^/,{"role": "assistant", "content": /'         |
 tee -a "$CONVERSATION"                                |
-cat                                                   |
 sed 's/.*"content": "\(.*\)"}$/\1/'                   |
 json_extract

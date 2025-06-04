@@ -11,6 +11,8 @@ AIV is a shell-based command-line utility designed for seamless integration with
 - **Pipe-friendly interface** that works with any Unix tool
 - **Flexible input handling** supporting files, globs, and stdin
 - **Real-time conversation management** with persistent state
+- **Token-efficient context storage** - when only `-c` option is used without a prompt and normal stdin, context is saved to conversation file without making API requests
+
 
 ## Installation
 
@@ -171,6 +173,14 @@ When you pipe code through AIV, it automatically:
 - Adds location context like `[src/main.rs:45:67]`
 
 This helps the AI provide more precise, location-aware assistance.
+
+### Context-Only Mode
+
+When using only the `-c` option without providing a prompt and normal stdin:
+- No API request is sent to save tokens
+- Context is stored in the conversation file for future use
+- No output is generated
+- Useful for building up context before asking questions
 
 ### File Management
 
